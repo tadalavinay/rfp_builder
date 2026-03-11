@@ -1,0 +1,18 @@
+{
+  "name": "rfp-response-library",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "idb": "^8.0.2",
+    "mammoth": "^1.9.0",
+    "pdfjs-dist": "^4.10.38",
+    "vite": "^6.2.2",
+    "xlsx": "^0.18.5"
+  }
+}
