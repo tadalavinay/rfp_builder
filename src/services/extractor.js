@@ -103,7 +103,7 @@ export function extractResponses(text, sourceFile, documentId) {
     const entries = [];
 
     // Strategy 1: Explicit Q&A patterns (Q: / A:, Question: / Answer:)
-    const qaRegex = /(?:^|\n)\s*(?:Q(?:uestion)?[\s.:]+\d*[\s.:]*)(.*?)(?:\n\s*(?:A(?:nswer)?[\s.:]+))([\s\S]*?)(?=(?:\n\s*(?:Q(?:uestion)?[\s.:]+))|$)/gi;
+    const qaRegex = /(?:^|\n)\s*(?:Q(?:uestion)?[\s.:]+\d*[\s.:]*)(.+?)(?:\n\s*(?:A(?:nswer)?[\s.:]+))([\s\S]*?)(?=(?:\n\s*(?:Q(?:uestion)?[\s.:]+))|\n\s*$|$)/gi;
     let match;
     while ((match = qaRegex.exec(text)) !== null) {
         const question = match[1].trim();
@@ -113,31 +113,53 @@ export function extractResponses(text, sourceFile, documentId) {
         }
     }
 
-    // Strategy 2: Numbered sections (1. Title\nContent, 1.1 Sub-title\nContent)
-    if (entries.length < 3) {
-        const numberedRegex = /(?:^|\n)\s*(\d+(?:\.\d+)*)[.)]\s+([^\n]+)\n([\s\S]*?)(?=(?:\n\s*\d+(?:\.\d+)*[.)]\s+)|$)/g;
-        while ((match = numberedRegex.exec(text)) !== null) {
-            const heading = match[2].trim();
-            const body = match[3].trim();
-            if (heading.length > 3 && body.length > 20) {
-                entries.push(createEntry(heading, body, sourceFile, documentId));
+    // Strategy 2: Key:Value blocks (common in Excel exports)
+    // Groups consecutive "Key: Value" lines separated by blank lines
+    const kvBlocks = text.split(/\n\s*\n/).filter((b) => b.trim().length > 10);
+    for (const block of kvBlocks) {
+        const lines = block.trim().split('\n').filter((l) => l.trim());
+        // Check if most lines have a "Key: Value" pattern
+        const kvLines = lines.filter((l) => /^[^:]{2,100}:\s+.+/.test(l.trim()));
+        if (kvLines.length >= 2 && kvLines.length >= lines.length * 0.5) {
+            // Parse key-value pairs from block
+            const pairs = {};
+            for (const line of kvLines) {
+                const colonIdx = line.indexOf(':');
+                const key = line.substring(0, colonIdx).trim();
+                const val = line.substring(colonIdx + 1).trim();
+                if (key && val) pairs[key] = val;
+            }
+            // Use the first pair as question, rest as answer
+            const keys = Object.keys(pairs);
+            if (keys.length >= 2) {
+                const question = `${keys[0]}: ${pairs[keys[0]]}`;
+                const answerParts = keys.slice(1).map((k) => `${k}: ${pairs[k]}`);
+                entries.push(createEntry(question, answerParts.join('\n'), sourceFile, documentId));
             }
         }
     }
 
-    // Strategy 3: Header-body pairs (ALL CAPS header or Title Case header followed by content)
-    if (entries.length < 3) {
-        const headerRegex = /(?:^|\n)\s*([A-Z][A-Z\s&/,]{4,})\s*\n([\s\S]*?)(?=(?:\n\s*[A-Z][A-Z\s&/,]{4,}\s*\n)|$)/g;
-        while ((match = headerRegex.exec(text)) !== null) {
-            const heading = match[1].trim();
-            const body = match[2].trim();
-            if (body.length > 30 && !heading.match(/^page\s+\d+$/i)) {
-                entries.push(createEntry(toTitleCase(heading), body, sourceFile, documentId));
-            }
+    // Strategy 3: Numbered sections (1. Title\nContent, 1.1 Sub-title\nContent)
+    const numberedRegex = /(?:^|\n)\s*(\d+(?:\.\d+)*)[.)]\s+([^\n]+)\n([\s\S]*?)(?=(?:\n\s*\d+(?:\.\d+)*[.)]\s+)|$)/g;
+    while ((match = numberedRegex.exec(text)) !== null) {
+        const heading = match[2].trim();
+        const body = match[3].trim();
+        if (heading.length > 3 && body.length > 20) {
+            entries.push(createEntry(heading, body, sourceFile, documentId));
         }
     }
 
-    // Strategy 4: Paragraph chunking (fallback — split into ~500 char chunks)
+    // Strategy 4: Header-body pairs (ALL CAPS header or Title Case header followed by content)
+    const headerRegex = /(?:^|\n)\s*([A-Z][A-Z\s&/,]{4,})\s*\n([\s\S]*?)(?=(?:\n\s*[A-Z][A-Z\s&/,]{4,}\s*\n)|$)/g;
+    while ((match = headerRegex.exec(text)) !== null) {
+        const heading = match[1].trim();
+        const body = match[2].trim();
+        if (body.length > 30 && !heading.match(/^page\s+\d+$/i)) {
+            entries.push(createEntry(toTitleCase(heading), body, sourceFile, documentId));
+        }
+    }
+
+    // Strategy 5: Paragraph chunking (fallback for remaining content)
     if (entries.length < 2) {
         const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 30);
 

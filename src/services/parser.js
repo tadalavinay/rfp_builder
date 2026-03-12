@@ -68,6 +68,28 @@ async function parsePdf(file) {
     return { text: pages.join('\n\n'), type: 'pdf' };
 }
 
+/**
+ * Safely extract text from an ExcelJS cell value.
+ * ExcelJS returns rich-text as { richText: [{text:'...'}, ...] },
+ * dates as Date objects, formulas as { result }, etc.
+ */
+function cellToString(val) {
+    if (val == null) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    if (val instanceof Date) return val.toLocaleDateString();
+    // Rich text: { richText: [{ text: '...' }, ...] }
+    if (val.richText && Array.isArray(val.richText)) {
+        return val.richText.map((part) => part.text || '').join('');
+    }
+    // Formula result
+    if (val.result != null) return cellToString(val.result);
+    // Hyperlink
+    if (val.text) return val.text;
+    // Fallback
+    return String(val);
+}
+
 async function parseExcel(file) {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = new ExcelJS.Workbook();
@@ -77,7 +99,8 @@ async function parseExcel(file) {
     workbook.eachSheet((worksheet) => {
         const rows = [];
         worksheet.eachRow({ includeEmpty: false }, (row) => {
-            rows.push(row.values.slice(1)); // slice(1) removes ExcelJS's 1-based index placeholder
+            // row.values is 1-based, slice(1) to get 0-based array
+            rows.push(row.values.slice(1).map(cellToString));
         });
 
         if (rows.length === 0) return;
@@ -87,18 +110,16 @@ async function parseExcel(file) {
         // Detect if the first row looks like headers
         const firstRow = rows[0];
         const hasHeaders =
-            firstRow.every((cell) => {
-                const val = cell != null ? String(cell) : '';
-                return val.length > 0 && val.length < 200;
-            }) && rows.length > 1;
+            firstRow.every((cell) => cell.length > 0 && cell.length < 200) &&
+            rows.length > 1;
 
         if (hasHeaders) {
-            const headers = firstRow.map((h) => (h != null ? String(h).trim() : ''));
+            const headers = firstRow.map((h) => h.trim());
             for (let r = 1; r < rows.length; r++) {
                 const row = rows[r];
-                if (row.every((cell) => !cell && cell !== 0)) continue;
+                if (row.every((cell) => !cell)) continue;
                 for (let c = 0; c < headers.length; c++) {
-                    const val = row[c] != null ? String(row[c]).trim() : '';
+                    const val = row[c] ? row[c].trim() : '';
                     if (val) sheetText += `${headers[c]}: ${val}\n`;
                 }
                 sheetText += '\n';
@@ -106,7 +127,7 @@ async function parseExcel(file) {
         } else {
             for (const row of rows) {
                 const line = row
-                    .map((cell) => (cell != null ? String(cell).trim() : ''))
+                    .map((cell) => cell.trim())
                     .filter(Boolean)
                     .join(' | ');
                 if (line) sheetText += line + '\n';
