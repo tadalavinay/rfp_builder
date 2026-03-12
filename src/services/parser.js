@@ -70,24 +70,47 @@ async function parsePdf(file) {
 
 /**
  * Safely extract text from an ExcelJS cell value.
- * ExcelJS returns rich-text as { richText: [{text:'...'}, ...] },
- * dates as Date objects, formulas as { result }, etc.
+ * ExcelJS can return: strings, numbers, booleans, Date objects,
+ * rich-text { richText: [...] }, formulas { formula, result },
+ * hyperlinks { text, hyperlink }, errors { error }, shared strings, etc.
+ * This function NEVER returns '[object Object]'.
  */
 function cellToString(val) {
     if (val == null) return '';
     if (typeof val === 'string') return val;
     if (typeof val === 'number' || typeof val === 'boolean') return String(val);
     if (val instanceof Date) return val.toLocaleDateString();
+    if (typeof val !== 'object') return String(val);
+
     // Rich text: { richText: [{ text: '...' }, ...] }
     if (val.richText && Array.isArray(val.richText)) {
-        return val.richText.map((part) => part.text || '').join('');
+        return val.richText.map((part) => (part && part.text) || '').join('');
     }
-    // Formula result
-    if (val.result != null) return cellToString(val.result);
-    // Hyperlink
-    if (val.text) return val.text;
-    // Fallback
-    return String(val);
+    // Formula: { formula: '...', result: ... }
+    if (val.result !== undefined) return cellToString(val.result);
+    // Hyperlink: { text: '...', hyperlink: '...' }
+    if (val.text != null) return cellToString(val.text);
+    // Error: { error: '#REF!' }
+    if (val.error) return '';
+    // SharedString or other object with a value property
+    if (val.value !== undefined) return cellToString(val.value);
+
+    // Last resort: recursively extract all string/number values from object
+    const parts = [];
+    for (const v of Object.values(val)) {
+        if (typeof v === 'string' && v.length > 0) parts.push(v);
+        else if (typeof v === 'number') parts.push(String(v));
+        else if (v && typeof v === 'object' && !Array.isArray(v)) {
+            const nested = cellToString(v);
+            if (nested) parts.push(nested);
+        } else if (Array.isArray(v)) {
+            for (const item of v) {
+                const nested = cellToString(item);
+                if (nested) parts.push(nested);
+            }
+        }
+    }
+    return parts.join('');
 }
 
 async function parseExcel(file) {
