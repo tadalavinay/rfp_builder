@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+standalone/
+rfp-library.html
 
 # Environment variables
 .env

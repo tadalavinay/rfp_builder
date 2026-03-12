@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:single": "vite build --config vite.singlefile.config.js && cp standalone/index.html rfp-library.html && echo '✅ Created rfp-library.html'",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -14,5 +15,8 @@
     "pdfjs-dist": "^4.10.38",
     "vite": "^6.2.2",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "vite-plugin-singlefile": "^2.3.0"
   }
 }

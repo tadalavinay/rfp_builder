@@ -34,7 +34,10 @@ A modern, browser-based application for building and managing a searchable libra
 rfp_builder/
 ├── index.html                  # App entry HTML
 ├── package.json
-├── vite.config.js
+├── vite.config.js              # Dev & standard build config
+├── vite.singlefile.config.js   # Self-contained HTML build config
+├── scripts/
+│   └── inline-worker.mjs       # PDF worker inlining script
 └── src/
     ├── main.js                 # App shell, routing, sidebar
     ├── index.css               # Global styles & design tokens
@@ -92,6 +95,18 @@ npm run preview
 ```
 
 The optimized output will be in the `dist/` directory.
+
+### 📦 Portable Single-File Build
+
+Create a **self-contained HTML file** that works anywhere — just double-click to open. No server, no Python, no command line needed.
+
+```bash
+npm run build:single
+```
+
+This generates `rfp-library.html` in the project root (~7MB). Copy this single file to any computer (Windows, Mac, Linux) and open it directly in a browser. All features work offline, including PDF, DOCX, and Excel file parsing.
+
+> **Note:** Data is stored locally in the browser's IndexedDB. To move data between machines, use **Export** (JSON) on one machine and upload it on the other.
 
 ## 📖 Usage
 

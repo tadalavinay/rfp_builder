@@ -40,11 +40,19 @@ async function parseDocx(file) {
 async function parsePdf(file) {
     const pdfjsLib = await import('pdfjs-dist');
 
-    // Set the worker source
-    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-        'pdfjs-dist/build/pdf.worker.mjs',
-        import.meta.url
-    ).toString();
+    // Set the worker source (only once)
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        if (window.__PDF_WORKER_URL__) {
+            // Self-contained HTML: worker is inlined as a data URL
+            pdfjsLib.GlobalWorkerOptions.workerSrc = window.__PDF_WORKER_URL__;
+        } else {
+            // Dev server / normal build: use file reference
+            pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+                'pdfjs-dist/build/pdf.worker.mjs',
+                import.meta.url
+            ).toString();
+        }
+    }
 
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
