@@ -37,6 +37,38 @@ async function parseDocx(file) {
     return { text: result.value, type: 'docx' };
 }
 
+/**
+ * Clean PDF-extracted text: fix ligature encoding issues and stray characters.
+ * Many PDFs use custom font encodings where ligatures like "ti", "ft", "fi"
+ * are mapped to non-standard characters (Θ, Ō, etc.).
+ */
+function cleanPdfText(text) {
+    return text
+        // Standard Unicode ligatures → ASCII
+        .replace(/\uFB01/g, 'fi')
+        .replace(/\uFB02/g, 'fl')
+        .replace(/\uFB00/g, 'ff')
+        .replace(/\uFB03/g, 'ffi')
+        .replace(/\uFB04/g, 'ffl')
+        .replace(/\uFB05/g, 'st')
+        .replace(/\uFB06/g, 'st')
+        // Custom font ligature: Θ (theta) commonly mapped for "ti"
+        .replace(/(\S)\s*Θ\s*(\S)/g, '$1ti$2')
+        // Custom font ligature: Ō commonly mapped for "ft"
+        .replace(/(\S)\s*Ō\s*(\S)/g, '$1ft$2')
+        // Custom font ligature: fi mapped to fi-like chars
+        .replace(/(\S)\s*fi\s*(\S)/g, '$1fi$2')
+        // Fix stray spaces in the middle of words (e.g., "deliverin g")
+        .replace(/([a-z])\s([a-z]{1,2})\b/g, (match, p1, p2) => {
+            // Only merge if the second part is very short (1-2 chars)
+            // and the result looks like a word continuation
+            return p1 + p2;
+        })
+        // Collapse runs of 3+ spaces to a single space
+        .replace(/ {3,}/g, ' ')
+        .trim();
+}
+
 async function parsePdf(file) {
     const pdfjsLib = await import('pdfjs-dist');
 
@@ -61,11 +93,39 @@ async function parsePdf(file) {
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        const text = content.items.map((item) => item.str).join(' ');
-        pages.push(text);
+
+        let pageText = '';
+        let lastY = null;
+        let lastItemHeight = 12;
+
+        for (const item of content.items) {
+            if (!item.str && !item.hasEOL) continue;
+
+            const y = item.transform ? item.transform[5] : null;
+            const h = item.height || lastItemHeight;
+
+            if (lastY !== null && y !== null) {
+                const gap = Math.abs(lastY - y);
+                if (gap > h * 1.8) {
+                    // Large Y gap → paragraph break
+                    pageText += '\n\n';
+                } else if (gap > h * 0.3) {
+                    // Small Y gap → line break
+                    pageText += '\n';
+                } else if (pageText.length > 0 && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
+                    pageText += ' ';
+                }
+            }
+
+            pageText += item.str;
+            if (y !== null) lastY = y;
+            if (item.height) lastItemHeight = item.height;
+        }
+
+        pages.push(pageText.trim());
     }
 
-    return { text: pages.join('\n\n'), type: 'pdf' };
+    return { text: cleanPdfText(pages.join('\n\n')), type: 'pdf' };
 }
 
 /**
