@@ -138,14 +138,50 @@ async function parseExcel(file) {
 
         if (hasHeaders) {
             const headers = firstRow.map((h) => h.trim());
-            for (let r = 1; r < rows.length; r++) {
-                const row = rows[r];
-                if (row.every((cell) => !cell)) continue;
-                for (let c = 0; c < headers.length; c++) {
-                    const val = row[c] ? row[c].trim() : '';
-                    if (val) sheetText += `${headers[c]}: ${val}\n`;
+
+            // Detect question and answer column indices
+            const qKeywords = ['question', 'query', 'requirement', 'ask'];
+            const aKeywords = ['answer', 'response', 'vendor response', 'reply', 'vendor answer', 'comment'];
+            const qIdx = headers.findIndex((h) => qKeywords.some((k) => h.toLowerCase().includes(k)));
+            const aIdx = headers.findIndex((h) => aKeywords.some((k) => h.toLowerCase().includes(k)));
+
+            if (qIdx !== -1 && aIdx !== -1) {
+                // Structured Q&A mode — output as explicit Q/A pairs
+                for (let r = 1; r < rows.length; r++) {
+                    const row = rows[r];
+                    const question = row[qIdx] ? row[qIdx].trim() : '';
+                    const answer = row[aIdx] ? row[aIdx].trim() : '';
+                    if (!question && !answer) continue;
+
+                    if (question) sheetText += `Q: ${question}\n`;
+                    if (answer) sheetText += `A: ${answer}\n`;
+
+                    // Append other columns as additional context
+                    for (let c = 0; c < headers.length; c++) {
+                        if (c === qIdx || c === aIdx) continue;
+                        const val = row[c] ? row[c].trim() : '';
+                        if (val) sheetText += `${headers[c]}: ${val}\n`;
+                    }
+                    sheetText += '\n';
                 }
-                sheetText += '\n';
+            } else {
+                // Generic header: value mode
+                for (let r = 1; r < rows.length; r++) {
+                    const row = rows[r];
+                    if (row.every((cell) => !cell)) continue;
+                    for (let c = 0; c < headers.length; c++) {
+                        const val = row[c] ? row[c].trim() : '';
+                        if (val) {
+                            // For multi-line values, put header on its own line
+                            if (val.includes('\n')) {
+                                sheetText += `${headers[c]}:\n${val}\n`;
+                            } else {
+                                sheetText += `${headers[c]}: ${val}\n`;
+                            }
+                        }
+                    }
+                    sheetText += '\n';
+                }
             }
         } else {
             for (const row of rows) {

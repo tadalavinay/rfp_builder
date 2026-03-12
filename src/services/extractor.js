@@ -103,12 +103,12 @@ export function extractResponses(text, sourceFile, documentId) {
     const entries = [];
 
     // Strategy 1: Explicit Q&A patterns (Q: / A:, Question: / Answer:)
-    const qaRegex = /(?:^|\n)\s*(?:Q(?:uestion)?[\s.:]+\d*[\s.:]*)(.+?)(?:\n\s*(?:A(?:nswer)?[\s.:]+))([\s\S]*?)(?=(?:\n\s*(?:Q(?:uestion)?[\s.:]+))|\n\s*$|$)/gi;
+    const qaRegex = /(?:^|\n)\s*(?:Q(?:uestion)?[\s.:]+\d*[\s.:]*)(.+?)(?:\n\s*(?:A(?:nswer)?[\s.:]+))([\s\S]*?)(?=\n\s*Q(?:uestion)?[\s.:]+|$)/gi;
     let match;
     while ((match = qaRegex.exec(text)) !== null) {
         const question = match[1].trim();
         const answer = match[2].trim();
-        if (question.length > 5 && answer.length > 10) {
+        if (question.length > 3 && answer.length > 5) {
             entries.push(createEntry(question, answer, sourceFile, documentId));
         }
     }
