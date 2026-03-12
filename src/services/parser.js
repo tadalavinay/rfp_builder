@@ -31,10 +31,94 @@ export async function parseFile(file) {
     }
 }
 
+/**
+ * Convert an HTML element to plain text preserving paragraph breaks.
+ */
+function htmlCellToText(element) {
+    let text = '';
+    for (const child of element.childNodes) {
+        if (child.nodeType === 3 /* TEXT_NODE */) {
+            text += child.textContent;
+        } else if (child.nodeType === 1 /* ELEMENT_NODE */) {
+            const tag = child.tagName.toLowerCase();
+            if (['p', 'br', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                if (text.length > 0 && !text.endsWith('\n')) text += '\n';
+            }
+            text += htmlCellToText(child);
+            if (['p', 'div', 'li', 'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                if (!text.endsWith('\n')) text += '\n';
+            }
+        }
+    }
+    return text;
+}
+
+/** Header keywords for detecting question/answer columns. */
+const Q_KEYWORDS = ['question', 'query', 'requirement', 'requested information', 'ask', 'information requested'];
+const A_KEYWORDS = ['answer', 'response', 'vendor response', 'reply', 'vendor answer', 'comment'];
+
 async function parseDocx(file) {
     const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return { text: result.value, type: 'docx' };
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+    const html = result.value;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const tables = doc.querySelectorAll('table');
+    let text = '';
+
+    if (tables.length > 0) {
+        for (const table of tables) {
+            const allRows = [...table.querySelectorAll('tr')];
+            if (allRows.length === 0) continue;
+
+            // Detect headers from first row
+            const headerCells = [...allRows[0].querySelectorAll('th, td')];
+            const headers = headerCells.map((c) => c.textContent.trim());
+            const qIdx = headers.findIndex((h) => Q_KEYWORDS.some((k) => h.toLowerCase().includes(k)));
+            const aIdx = headers.findIndex((h) => A_KEYWORDS.some((k) => h.toLowerCase().includes(k)));
+
+            const startRow = headers.length > 0 ? 1 : 0;
+
+            for (let i = startRow; i < allRows.length; i++) {
+                const cells = [...allRows[i].querySelectorAll('td')];
+                if (cells.length === 0) continue;
+
+                if (qIdx !== -1 && aIdx !== -1) {
+                    const q = htmlCellToText(cells[qIdx] || cells[0]).trim();
+                    const a = htmlCellToText(cells[aIdx] || cells[cells.length - 1]).trim();
+                    if (!q && !a) continue;
+                    if (q) text += `Q: ${q}\n`;
+                    if (a) text += `A: ${a}\n`;
+                    // Extra columns as context
+                    for (let c = 0; c < cells.length; c++) {
+                        if (c === qIdx || c === aIdx) continue;
+                        const val = htmlCellToText(cells[c]).trim();
+                        if (val && headers[c]) text += `${headers[c]}: ${val}\n`;
+                    }
+                    text += '\n';
+                } else {
+                    // No Q/A headers detected — output all cells
+                    for (let c = 0; c < cells.length; c++) {
+                        const header = headers[c] || `Column ${c + 1}`;
+                        const val = htmlCellToText(cells[c]).trim();
+                        if (val) text += `${header}: ${val}\n`;
+                    }
+                    text += '\n';
+                }
+            }
+        }
+
+        // Also extract non-table content
+        tables.forEach((t) => t.remove());
+        const remaining = doc.body.textContent.trim();
+        if (remaining) text = remaining + '\n\n' + text;
+    } else {
+        // No tables — fallback to plain text extraction
+        text = doc.body.textContent || '';
+    }
+
+    return { text: text.trim(), type: 'docx' };
 }
 
 /**
@@ -52,18 +136,18 @@ function cleanPdfText(text) {
         .replace(/\uFB04/g, 'ffl')
         .replace(/\uFB05/g, 'st')
         .replace(/\uFB06/g, 'st')
-        // Custom font ligature: Θ (theta) commonly mapped for "ti"
-        .replace(/(\S)\s*Θ\s*(\S)/g, '$1ti$2')
+        // Custom font ligature: Θ (theta) — try "ti" or "t" depending on context
+        .replace(/(\S)\s*Θ\s*(\S)/g, (m, before, after) => {
+            // If followed by a vowel-like continuation, likely "ti" (e.g., "Solu_Θ_on" → "Solution")
+            if (/[oeianu]/.test(after.toLowerCase())) return before + 'ti' + after;
+            // Otherwise just "t" (e.g., "sta_Θ_e" → "state")
+            return before + 't' + after;
+        })
+        // Standalone Θ (no surrounding word chars matched above)
+        .replace(/Θ/g, 'ti')
         // Custom font ligature: Ō commonly mapped for "ft"
         .replace(/(\S)\s*Ō\s*(\S)/g, '$1ft$2')
-        // Custom font ligature: fi mapped to fi-like chars
-        .replace(/(\S)\s*fi\s*(\S)/g, '$1fi$2')
-        // Fix stray spaces in the middle of words (e.g., "deliverin g")
-        .replace(/([a-z])\s([a-z]{1,2})\b/g, (match, p1, p2) => {
-            // Only merge if the second part is very short (1-2 chars)
-            // and the result looks like a word continuation
-            return p1 + p2;
-        })
+        .replace(/Ō/g, 'ft')
         // Collapse runs of 3+ spaces to a single space
         .replace(/ {3,}/g, ' ')
         .trim();
