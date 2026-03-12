@@ -25,7 +25,7 @@ A modern, browser-based application for building and managing a searchable libra
 | Storage     | IndexedDB via [idb](https://github.com/nicedoc/idb) |
 | PDF Parsing | [pdfjs-dist](https://github.com/nicedoc/pdfjs-dist) |
 | DOCX Parsing| [mammoth](https://github.com/nicedoc/mammoth) |
-| Excel Parsing| [xlsx (SheetJS)](https://sheetjs.com/)       |
+| Excel Parsing| [ExcelJS](https://github.com/exceljs/exceljs)       |
 | Typography  | [Inter](https://rsms.me/inter/) via Google Fonts |
 
 ## 📁 Project Structure

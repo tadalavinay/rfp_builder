@@ -10,11 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "idb": "^8.0.2",
     "mammoth": "^1.9.0",
     "pdfjs-dist": "^4.10.38",
-    "vite": "^6.2.2",
-    "xlsx": "^0.18.5"
+    "vite": "^6.2.2"
   },
   "devDependencies": {
     "vite-plugin-singlefile": "^2.3.0"

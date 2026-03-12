@@ -68,7 +68,7 @@ export function renderUploadView(container, { onComplete }) {
       const ext = file.name.split('.').pop().toLowerCase();
       const itemId = 'proc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
 
-      // Add processing item
+      // Add processing item (filename set via textContent to prevent XSS)
       const item = document.createElement('div');
       item.className = 'processing-item';
       item.id = itemId;
@@ -77,7 +77,7 @@ export function renderUploadView(container, { onComplete }) {
           ${icons.fileText}
         </div>
         <div class="processing-item-info">
-          <div class="processing-item-name">${file.name}</div>
+          <div class="processing-item-name"></div>
           <div class="processing-item-status">Parsing document...</div>
         </div>
         <div class="processing-item-progress">
@@ -85,6 +85,8 @@ export function renderUploadView(container, { onComplete }) {
         </div>
         <div class="processing-item-count">—</div>
       `;
+      // Set filename safely — textContent never interprets HTML tags
+      item.querySelector('.processing-item-name').textContent = file.name;
       processingList.appendChild(item);
 
       try {

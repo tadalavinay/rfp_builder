@@ -2,7 +2,7 @@
 // File parser — DOCX, PDF, TXT, Excel
 // ========================================================================
 import mammoth from 'mammoth';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 /**
  * Parse a file and return its raw text content.
@@ -70,41 +70,40 @@ async function parsePdf(file) {
 
 async function parseExcel(file) {
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(arrayBuffer);
     const sheets = [];
 
-    for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        // Convert to array-of-arrays for structured extraction
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    workbook.eachSheet((worksheet) => {
+        const rows = [];
+        worksheet.eachRow({ includeEmpty: false }, (row) => {
+            rows.push(row.values.slice(1)); // slice(1) removes ExcelJS's 1-based index placeholder
+        });
 
-        if (rows.length === 0) continue;
+        if (rows.length === 0) return;
 
-        let sheetText = `## ${sheetName}\n\n`;
+        let sheetText = `## ${worksheet.name}\n\n`;
 
         // Detect if the first row looks like headers
         const firstRow = rows[0];
-        const hasHeaders = firstRow.every(
-            (cell) => typeof cell === 'string' && cell.length > 0 && cell.length < 200
-        );
+        const hasHeaders =
+            firstRow.every((cell) => {
+                const val = cell != null ? String(cell) : '';
+                return val.length > 0 && val.length < 200;
+            }) && rows.length > 1;
 
-        if (hasHeaders && rows.length > 1) {
-            // Structured: use headers as question keys
-            const headers = firstRow.map((h) => String(h).trim());
+        if (hasHeaders) {
+            const headers = firstRow.map((h) => (h != null ? String(h).trim() : ''));
             for (let r = 1; r < rows.length; r++) {
                 const row = rows[r];
-                // Skip completely empty rows
                 if (row.every((cell) => !cell && cell !== 0)) continue;
                 for (let c = 0; c < headers.length; c++) {
                     const val = row[c] != null ? String(row[c]).trim() : '';
-                    if (val) {
-                        sheetText += `${headers[c]}: ${val}\n`;
-                    }
+                    if (val) sheetText += `${headers[c]}: ${val}\n`;
                 }
                 sheetText += '\n';
             }
         } else {
-            // Unstructured: just join all cells
             for (const row of rows) {
                 const line = row
                     .map((cell) => (cell != null ? String(cell).trim() : ''))
@@ -115,7 +114,7 @@ async function parseExcel(file) {
         }
 
         sheets.push(sheetText);
-    }
+    });
 
     return { text: sheets.join('\n\n'), type: 'xlsx' };
 }
