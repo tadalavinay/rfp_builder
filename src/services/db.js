@@ -8,6 +8,11 @@ const DB_VERSION = 1;
 
 let dbPromise = null;
 
+// Lunr.js search index cache state
+let cachedLunrIndex = null;
+let indexLastUpdated = Date.now();
+let cachedLunrDataStamp = null;
+
 function getDB() {
     if (!dbPromise) {
         dbPromise = openDB(DB_NAME, DB_VERSION, {
@@ -42,6 +47,7 @@ export async function addResponses(responses) {
         await tx.store.put(r);
     }
     await tx.done;
+    indexLastUpdated = Date.now();
 }
 
 export async function getAllResponses() {
@@ -56,13 +62,15 @@ export async function getResponseById(id) {
 
 export async function updateResponse(response) {
     const db = await getDB();
-    return db.put('responses', response);
+    const result = await db.put('responses', response);
+    indexLastUpdated = Date.now();
+    return result;
 }
 
 export async function deleteResponse(id) {
     const db = await getDB();
     const result = await db.delete('responses', id);
-    cachedLunrIndex = null; // Invalidate cache
+    indexLastUpdated = Date.now();
     return result;
 }
 
@@ -76,7 +84,7 @@ export async function deleteResponsesByDocument(documentId) {
         }
     }
     await tx.done;
-    cachedLunrIndex = null; // Invalidate cache
+    indexLastUpdated = Date.now();
 }
 
 export async function getResponsesByCategory(category) {
