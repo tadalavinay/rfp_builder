@@ -91,38 +91,41 @@ export async function searchResponses(query) {
 
     const all = await getAllResponses();
     
-    // Rebuild index if responses changed
-    if (!cachedLunrIndex || cachedLunrDataStamp !== indexLastUpdated) {
-        cachedLunrIndex = lunr(function () {
-            this.ref('id');
-            // Give higher weight to matches in question and tags
-            this.field('question', { boost: 10 });
-            this.field('tags', { boost: 5 });
-            this.field('category', { boost: 2 });
-            this.field('answer');
-            
-            all.forEach(function (doc) {
-                this.add({
-                    id: doc.id,
-                    question: doc.question || '',
-                    answer: doc.answer || '',
-                    tags: doc.tags ? doc.tags.join(' ') : '',
-                    category: doc.category || ''
-                });
-            }, this);
-        });
-        cachedLunrDataStamp = indexLastUpdated;
-    }
-
     try {
+        // Handle ES Module bundler quirks where CommonJS default export is wrapped
+        const lunrLib = typeof lunr === 'function' ? lunr : lunr.default;
+
+        // Rebuild index if responses changed
+        if (!cachedLunrIndex || cachedLunrDataStamp !== indexLastUpdated) {
+            cachedLunrIndex = lunrLib(function () {
+                this.ref('id');
+                // Give higher weight to matches in question and tags
+                this.field('question', { boost: 10 });
+                this.field('tags', { boost: 5 });
+                this.field('category', { boost: 2 });
+                this.field('answer');
+                
+                all.forEach(function (doc) {
+                    this.add({
+                        id: doc.id,
+                        question: doc.question || '',
+                        answer: doc.answer || '',
+                        tags: doc.tags ? doc.tags.join(' ') : '',
+                        category: doc.category || ''
+                    });
+                }, this);
+            });
+            cachedLunrDataStamp = indexLastUpdated;
+        }
+
         const results = cachedLunrIndex.query(q => {
-            const terms = lunr.tokenizer(query.trim());
+            const terms = lunrLib.tokenizer(query.trim());
             terms.forEach(term => {
                 const t = term.toString();
                 // 1. Exact match with stemming & stop-word pipeline
                 q.term(t, { usePipeline: true, boost: 10 });
                 // 2. Prefix match for partial words (bypasses pipeline to match raw index)
-                q.term(t, { usePipeline: false, wildcard: lunr.Query.wildcard.TRAILING, boost: 1 });
+                q.term(t, { usePipeline: false, wildcard: lunrLib.Query.wildcard.TRAILING, boost: 1 });
             });
         });
 
@@ -132,7 +135,7 @@ export async function searchResponses(query) {
 
         return results.map(r => resultsMap.get(r.ref)).filter(Boolean);
     } catch (e) {
-        // Fallback to basic string includes if query is malformed for Lunr
+        // Fallback to basic string includes if query is malformed for Lunr or it fails to initialize
         console.warn('Lunr search failed, falling back to basic search:', e);
         const qTerms = query.toLowerCase().trim().split(/\s+/);
         return all.filter((r) => {
