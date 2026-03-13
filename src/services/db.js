@@ -2,15 +2,11 @@
 // IndexedDB service using idb
 // ========================================================================
 import { openDB } from 'idb';
-import lunr from 'lunr';
 
 const DB_NAME = 'rfp-response-library';
 const DB_VERSION = 1;
 
 let dbPromise = null;
-let indexLastUpdated = Date.now();
-let cachedLunrIndex = null;
-let cachedLunrDataStamp = 0;
 
 function getDB() {
     if (!dbPromise) {
@@ -46,7 +42,6 @@ export async function addResponses(responses) {
         await tx.store.put(r);
     }
     await tx.done;
-    indexLastUpdated = Date.now();
 }
 
 export async function getAllResponses() {
@@ -61,14 +56,14 @@ export async function getResponseById(id) {
 
 export async function updateResponse(response) {
     const db = await getDB();
-    await db.put('responses', response);
-    indexLastUpdated = Date.now();
+    return db.put('responses', response);
 }
 
 export async function deleteResponse(id) {
     const db = await getDB();
-    await db.delete('responses', id);
-    indexLastUpdated = Date.now();
+    const result = await db.delete('responses', id);
+    cachedLunrIndex = null; // Invalidate cache
+    return result;
 }
 
 export async function deleteResponsesByDocument(documentId) {
@@ -81,7 +76,7 @@ export async function deleteResponsesByDocument(documentId) {
         }
     }
     await tx.done;
-    indexLastUpdated = Date.now();
+    cachedLunrIndex = null; // Invalidate cache
 }
 
 export async function getResponsesByCategory(category) {
@@ -93,7 +88,7 @@ export async function searchResponses(query) {
     if (!query || !query.trim()) {
         return getAllResponses();
     }
-    
+
     const all = await getAllResponses();
     
     // Rebuild index if responses changed
@@ -120,15 +115,21 @@ export async function searchResponses(query) {
     }
 
     try {
-        // Lunr expects default terms to be exact words. 
-        // Adding wildcards at the end makes it perform prefix/fuzzy matching ("keywo*" matches "keyword")
-        const searchTerms = query.trim().split(/\s+/).map(t => t + '*').join(' ');
-        const results = cachedLunrIndex.search(searchTerms);
-        
+        const results = cachedLunrIndex.query(q => {
+            const terms = lunr.tokenizer(query.trim());
+            terms.forEach(term => {
+                const t = term.toString();
+                // 1. Exact match with stemming & stop-word pipeline
+                q.term(t, { usePipeline: true, boost: 10 });
+                // 2. Prefix match for partial words (bypasses pipeline to match raw index)
+                q.term(t, { usePipeline: false, wildcard: lunr.Query.wildcard.TRAILING, boost: 1 });
+            });
+        });
+
         // Map back to original documents
         const resultsMap = new Map();
         all.forEach(r => resultsMap.set(r.id, r));
-        
+
         return results.map(r => resultsMap.get(r.ref)).filter(Boolean);
     } catch (e) {
         // Fallback to basic string includes if query is malformed for Lunr
