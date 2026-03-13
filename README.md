@@ -6,7 +6,7 @@ A modern, browser-based application for building and managing a searchable libra
 
 - **Multi-Format Upload** — Drag & drop or browse to upload DOCX, PDF, Excel (XLSX/XLS), TXT, Markdown, and CSV files.
 - **Automatic Extraction** — Parses uploaded documents and extracts question-answer pairs into a structured library.
-- **Searchable Library** — Full-text search across questions, answers, tags, and categories with highlighted results.
+- **Searchable Library** — Smart, offline full-text search powered by Lunr.js (supports stemming, fuzzy matching, and relevance scoring).
 - **Categories & Tags** — Organize responses by category and tag for quick filtering.
 - **Inline Editing** — Edit questions, answers, categories, and tags directly from the library.
 - **Copy to Clipboard** — One-click copy of any answer for pasting into new proposals.
@@ -26,6 +26,7 @@ A modern, browser-based application for building and managing a searchable libra
 | PDF Parsing | [pdfjs-dist](https://github.com/nicedoc/pdfjs-dist) |
 | DOCX Parsing| [mammoth](https://github.com/nicedoc/mammoth) |
 | Excel Parsing| [ExcelJS](https://github.com/exceljs/exceljs)       |
+| Search Engine| [Lunr.js](https://lunrjs.com/)               |
 | Typography  | [Inter](https://rsms.me/inter/) via Google Fonts |
 
 ## 📁 Project Structure
