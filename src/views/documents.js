@@ -49,13 +49,13 @@ export function renderDocumentsView(container, { refreshStats }) {
                     day: 'numeric',
                 });
                 return `
-          <div class="document-item">
-            <div class="document-item-icon processing-item-icon ${typeClass}">
+          <div class="processing-item">
+            <div class="processing-item-icon ${typeClass}">
               ${icons.fileText}
             </div>
-            <div class="document-item-info">
-              <div class="document-item-name">${escapeHtml(doc.name)}</div>
-              <div class="document-item-meta">${sizeStr} · ${dateStr} · ${doc.entryCount || 0} responses extracted</div>
+            <div class="processing-item-info">
+              <div class="processing-item-name">${escapeHtml(doc.name)}</div>
+              <div class="processing-item-status">${sizeStr} · ${dateStr} · ${doc.entryCount || 0} responses extracted</div>
             </div>
             <button class="icon-btn delete-doc-btn" data-id="${doc.id}" data-name="${escapeAttr(doc.name)}" title="Delete document and its responses">
               ${icons.trash}
