@@ -2,11 +2,15 @@
 // IndexedDB service using idb
 // ========================================================================
 import { openDB } from 'idb';
+import lunr from 'lunr';
 
 const DB_NAME = 'rfp-response-library';
 const DB_VERSION = 1;
 
 let dbPromise = null;
+let indexLastUpdated = Date.now();
+let cachedLunrIndex = null;
+let cachedLunrDataStamp = 0;
 
 function getDB() {
     if (!dbPromise) {
@@ -42,6 +46,7 @@ export async function addResponses(responses) {
         await tx.store.put(r);
     }
     await tx.done;
+    indexLastUpdated = Date.now();
 }
 
 export async function getAllResponses() {
@@ -56,12 +61,14 @@ export async function getResponseById(id) {
 
 export async function updateResponse(response) {
     const db = await getDB();
-    return db.put('responses', response);
+    await db.put('responses', response);
+    indexLastUpdated = Date.now();
 }
 
 export async function deleteResponse(id) {
     const db = await getDB();
-    return db.delete('responses', id);
+    await db.delete('responses', id);
+    indexLastUpdated = Date.now();
 }
 
 export async function deleteResponsesByDocument(documentId) {
@@ -74,6 +81,7 @@ export async function deleteResponsesByDocument(documentId) {
         }
     }
     await tx.done;
+    indexLastUpdated = Date.now();
 }
 
 export async function getResponsesByCategory(category) {
@@ -85,17 +93,57 @@ export async function searchResponses(query) {
     if (!query || !query.trim()) {
         return getAllResponses();
     }
-    const searchTerms = query.toLowerCase().trim().split(/\s+/);
+    
     const all = await getAllResponses();
-    return all.filter((r) => {
-        return searchTerms.every(
-            (term) =>
-                r.question.toLowerCase().includes(term) ||
-                r.answer.toLowerCase().includes(term) ||
-                (r.tags && r.tags.some((t) => t.toLowerCase().includes(term))) ||
-                (r.category && r.category.toLowerCase().includes(term))
-        );
-    });
+    
+    // Rebuild index if responses changed
+    if (!cachedLunrIndex || cachedLunrDataStamp !== indexLastUpdated) {
+        cachedLunrIndex = lunr(function () {
+            this.ref('id');
+            // Give higher weight to matches in question and tags
+            this.field('question', { boost: 10 });
+            this.field('tags', { boost: 5 });
+            this.field('category', { boost: 2 });
+            this.field('answer');
+            
+            all.forEach(function (doc) {
+                this.add({
+                    id: doc.id,
+                    question: doc.question || '',
+                    answer: doc.answer || '',
+                    tags: doc.tags ? doc.tags.join(' ') : '',
+                    category: doc.category || ''
+                });
+            }, this);
+        });
+        cachedLunrDataStamp = indexLastUpdated;
+    }
+
+    try {
+        // Lunr expects default terms to be exact words. 
+        // Adding wildcards at the end makes it perform prefix/fuzzy matching ("keywo*" matches "keyword")
+        const searchTerms = query.trim().split(/\s+/).map(t => t + '*').join(' ');
+        const results = cachedLunrIndex.search(searchTerms);
+        
+        // Map back to original documents
+        const resultsMap = new Map();
+        all.forEach(r => resultsMap.set(r.id, r));
+        
+        return results.map(r => resultsMap.get(r.ref)).filter(Boolean);
+    } catch (e) {
+        // Fallback to basic string includes if query is malformed for Lunr
+        console.warn('Lunr search failed, falling back to basic search:', e);
+        const qTerms = query.toLowerCase().trim().split(/\s+/);
+        return all.filter((r) => {
+            return qTerms.every(
+                (term) =>
+                    r.question.toLowerCase().includes(term) ||
+                    r.answer.toLowerCase().includes(term) ||
+                    (r.tags && r.tags.some((t) => t.toLowerCase().includes(term))) ||
+                    (r.category && r.category.toLowerCase().includes(term))
+            );
+        });
+    }
 }
 
 // ---- Documents ----
