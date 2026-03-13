@@ -102,8 +102,8 @@ function extractTags(text) {
 export function extractResponses(text, sourceFile, documentId) {
     const entries = [];
 
-    // Strategy 1: Explicit Q&A patterns (Q: / A:, Question: / Answer:)
-    const qaRegex = /(?:^|\n)\s*(?:Q(?:uestion)?[\s.:]+\d*[\s.:]*)(.+?)(?:\n\s*(?:A(?:nswer)?[\s.:]+))([\s\S]*?)(?=\n\s*Q(?:uestion)?[\s.:]+|$)/gi;
+    // Strategy 1: Explicit Q&A patterns (Q: / A:, Question: / Answer:, Question 1:, Q.1.)
+    const qaRegex = /(?:^|\n)\s*(?:Q(?:uestion)?(?:\s*\d+)?\s*[:.]\s*)(.+?)(?:\n\s*(?:A(?:nswer)?(?:\s*\d+)?\s*[:.]\s*))([\s\S]*?)(?=\n\s*Q(?:uestion)?(?:\s*\d+)?\s*[:.]|$)/gi;
     let match;
     while ((match = qaRegex.exec(text)) !== null) {
         const question = match[1].trim();
@@ -117,9 +117,12 @@ export function extractResponses(text, sourceFile, documentId) {
     // Groups consecutive "Key: Value" lines separated by blank lines
     const kvBlocks = text.split(/\n\s*\n/).filter((b) => b.trim().length > 10);
     for (const block of kvBlocks) {
+        // Filter out JSON blocks completely
+        if (/(?:\"[a-zA-Z0-9_]+\"\s*:|{[\s\S]*}|\[[\s\S]*\])/.test(block)) continue;
+
         const lines = block.trim().split('\n').filter((l) => l.trim());
-        // Check if most lines have a "Key: Value" pattern
-        const kvLines = lines.filter((l) => /^[^:]{2,100}:\s+.+/.test(l.trim()));
+        // Check if most lines have a "Key: Value" pattern (ignoring JSON keys)
+        const kvLines = lines.filter((l) => /^[^:"]{2,100}:\s+[^"{}]+/.test(l.trim()));
         if (kvLines.length >= 2 && kvLines.length >= lines.length * 0.5) {
             // Parse key-value pairs from block
             const pairs = {};
@@ -164,7 +167,13 @@ export function extractResponses(text, sourceFile, documentId) {
 
     // Strategy 5: Paragraph chunking (fallback for remaining content)
     if (entries.length < 2) {
-        const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 30);
+        const paragraphs = text.split(/\n\s*\n/).filter((p) => {
+            const pt = p.trim();
+            // Skip JSON-like blocks or tiny paragraphs
+            if (pt.length <= 30) return false;
+            if (/(?:\"[a-zA-Z0-9_]+\"\s*:|{[\s\S]*})/.test(pt)) return false;
+            return true;
+        });
 
         for (let i = 0; i < paragraphs.length; i++) {
             const para = paragraphs[i].trim();
