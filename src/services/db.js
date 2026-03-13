@@ -85,15 +85,17 @@ export async function searchResponses(query) {
     if (!query || !query.trim()) {
         return getAllResponses();
     }
-    const q = query.toLowerCase().trim();
+    const searchTerms = query.toLowerCase().trim().split(/\s+/);
     const all = await getAllResponses();
-    return all.filter(
-        (r) =>
-            r.question.toLowerCase().includes(q) ||
-            r.answer.toLowerCase().includes(q) ||
-            (r.tags && r.tags.some((t) => t.toLowerCase().includes(q))) ||
-            (r.category && r.category.toLowerCase().includes(q))
-    );
+    return all.filter((r) => {
+        return searchTerms.every(
+            (term) =>
+                r.question.toLowerCase().includes(term) ||
+                r.answer.toLowerCase().includes(term) ||
+                (r.tags && r.tags.some((t) => t.toLowerCase().includes(term))) ||
+                (r.category && r.category.toLowerCase().includes(term))
+        );
+    });
 }
 
 // ---- Documents ----
