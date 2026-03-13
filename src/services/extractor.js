@@ -140,7 +140,8 @@ export function extractResponses(text, sourceFile, documentId) {
     }
 
     // Strategy 3: Numbered sections (1. Title\nContent, 1.1 Sub-title\nContent)
-    const numberedRegex = /(?:^|\n)\s*(\d+(?:\.\d+)*)[.)]\s+([^\n]+)\n([\s\S]*?)(?=(?:\n\s*\d+(?:\.\d+)*[.)]\s+)|$)/g;
+    // Stops at next Numbered section or next Q: marker
+    const numberedRegex = /(?:^|\n)\s*(\d+(?:\.\d+)*)[.)]\s+([^\n]+)\n([\s\S]*?)(?=(?:\n\s*\d+(?:\.\d+)*[.)]\s+)|\n\s*Q(?:uestion)?[\s.:]+|$)/g;
     while ((match = numberedRegex.exec(text)) !== null) {
         const heading = match[2].trim();
         const body = match[3].trim();
@@ -150,7 +151,8 @@ export function extractResponses(text, sourceFile, documentId) {
     }
 
     // Strategy 4: Header-body pairs (ALL CAPS header or Title Case header followed by content)
-    const headerRegex = /(?:^|\n)\s*([A-Z][A-Z\s&/,]{4,})\s*\n([\s\S]*?)(?=(?:\n\s*[A-Z][A-Z\s&/,]{4,}\s*\n)|$)/g;
+    // Stops at next Header, next Numbered section, or next Q: marker
+    const headerRegex = /(?:^|\n)\s*([A-Z][A-Z\s&/,]{4,})\s*\n([\s\S]*?)(?=(?:\n\s*[A-Z][A-Z\s&/,]{4,}\s*\n)|\n\s*\d+(?:\.\d+)*[.)]\s+|\n\s*Q(?:uestion)?[\s.:]+|$)/g;
     while ((match = headerRegex.exec(text)) !== null) {
         const heading = match[1].trim();
         const body = match[2].trim();
